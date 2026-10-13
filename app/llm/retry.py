@@ -9,7 +9,7 @@ T = TypeVar("T")
 @dataclass
 class RetryPolicy:
     max_attempts: int = 3
-    initial_delay_seconds: float = 0.5
+    initial_delay_seconds: float = 1.5
     max_delay_seconds: float = 8.0
     sleep: Callable[[float], None] = field(default=time.sleep, repr=False)
 

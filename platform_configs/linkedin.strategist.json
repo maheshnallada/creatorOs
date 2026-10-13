@@ -1,0 +1,15 @@
+{
+  "platform": "linkedin",
+  "agent_id": "strategist",
+  "model": "openai/gpt-4o-mini",
+  "max_tokens": 768,
+  "timeout_seconds": 30,
+  "max_attempts": 3,
+  "max_output_corrections": 1,
+  "max_editor_revisions": 2,
+  "editor_quality_threshold": 7.0,
+  "mcp_tool_ids": [],
+  "llm_tool_ids": [],
+  "system_prompt_id": "linkedin.strategist.system",
+  "instruction_prompt_id": "linkedin.strategist.instructions"
+}

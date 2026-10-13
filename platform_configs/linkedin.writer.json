@@ -5,8 +5,11 @@
   "max_tokens": 2048,
   "timeout_seconds": 30,
   "max_attempts": 3,
-  "mcp_tool_ids": ["get_brand_voice_profile"],
-  "llm_tool_ids": ["format_platform_schema"],
+  "max_output_corrections": 1,
+  "max_editor_revisions": 2,
+  "editor_quality_threshold": 7.0,
+  "mcp_tool_ids": [],
+  "llm_tool_ids": [],
   "system_prompt_id": "linkedin.writer.system",
   "instruction_prompt_id": "linkedin.writer.instructions"
 }

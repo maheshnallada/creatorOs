@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     mesh_api_key: SecretStr | None = None
     mesh_base_url: Literal["https://api.meshapi.ai/v1"] = MESH_BASE_URL
     default_model: str = "openai/gpt-4o-mini"
+    database_url: str = "sqlite:///./creatoros.db"
     request_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
     default_max_attempts: int = Field(default=3, ge=1, le=10)
 
@@ -54,6 +55,9 @@ class PlatformAgentConfig(BaseModel):
     max_tokens: int = Field(default=2048, ge=1, le=32768)
     timeout_seconds: float = Field(default=30.0, gt=0, le=300)
     max_attempts: int = Field(default=3, ge=1, le=10)
+    max_output_corrections: int = Field(default=1, ge=0, le=3)
+    max_editor_revisions: int = Field(default=2, ge=0, le=5)
+    editor_quality_threshold: float = Field(default=7.0, ge=0, le=10)
     mcp_tool_ids: list[str] = Field(default_factory=list)
     llm_tool_ids: list[str] = Field(default_factory=list)
     system_prompt_id: str = Field(min_length=1)

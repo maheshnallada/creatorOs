@@ -1,10 +1,10 @@
-Create content for the requested LinkedIn format.
+Create a LinkedIn text post using the brief and strategy below. If editor feedback is present, apply its revision instructions while preserving the user's intent.
 
-Brief:
-{brief}
+Brief JSON:
+{brief_json}
 
-Approved strategy:
-{strategy}
+Strategy JSON:
+{strategy_json}
 
-Brand voice profile:
-{brand_voice_profile}
+Editor critique JSON (empty on the initial draft):
+{critique_json}

@@ -18,3 +18,4 @@ generated-media/
 dist/
 build/
 *.egg-info/
+docs/
