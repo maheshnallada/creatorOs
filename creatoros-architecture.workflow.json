@@ -1,0 +1,89 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "CreatorOS Multi-Agent & Tools Architecture",
+    "quality_profile": "standard"
+  },
+  "lanes": [
+    { "id": "input_review", "label": "User & Review Plane" },
+    { "id": "agent_core", "label": "Agent Pipeline Core" },
+    { "id": "tool_layer", "label": "Agent Tools & MCP Layer" },
+    { "id": "storage_loop", "label": "Datastores & Async Learning" }
+  ],
+  "phases": [
+    { "id": "ingest", "label": "Intake & Strategy", "fromCol": 0, "toCol": 1 },
+    { "id": "craft", "label": "Multi-Format Generation", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "publish_learn", "label": "Review, Publish & Learning", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "refine_loop", "label": "Editor refinement loop (Self-Improvement)", "lane": "agent_core", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "tool_cluster", "label": "Agent tool calling layer", "lane": "tool_layer", "fromCol": 1, "toCol": 4, "variant": "dashed" },
+    { "id": "closed_loop", "label": "Post-publish learning cycle", "lane": "storage_loop", "fromCol": 4, "toCol": 5, "variant": "emphasis" }
+  ],
+  "mainPath": [
+    "user_input",
+    "safety_agent",
+    "strategist",
+    "writer",
+    "editor",
+    "visualizer",
+    "hitl_review",
+    "post_queue",
+    "scheduler"
+  ],
+  "nodes": [
+    { "id": "user_input", "lane": "input_review", "col": 0, "type": "external", "label": "User Brief", "sublabel": "Topic & target", "width": 140 },
+    { "id": "safety_agent", "lane": "agent_core", "col": 0, "type": "security", "label": "Safety Agent", "sublabel": "Content guardrails", "tag": "Gatekeeper", "width": 140 },
+    { "id": "strategist", "lane": "agent_core", "col": 1, "type": "backend", "label": "Strategist Agent", "sublabel": "Angle, hook, audience", "tag": "Mesh API", "width": 140 },
+    { "id": "brand_mcp", "lane": "tool_layer", "col": 1, "type": "messagebus", "label": "Brand Voice MCP", "sublabel": "fetch_voice_profile", "tag": "MCP Tool", "width": 140 },
+    { "id": "writer", "lane": "agent_core", "col": 2, "type": "backend", "label": "Writer Agent", "sublabel": "Post, slides or script", "tag": "Mesh API", "width": 140 },
+    { "id": "rubric_tool", "lane": "tool_layer", "col": 3, "type": "messagebus", "label": "Rubric & Audit Tool", "sublabel": "score_rubric, log_audit", "tag": "LLM Tool", "width": 140 },
+    { "id": "editor", "lane": "agent_core", "col": 3, "type": "backend", "label": "Editor Agent", "sublabel": "Multi-rubric critique", "tag": "Refinement", "width": 140 },
+    { "id": "visualizer", "lane": "agent_core", "col": 4, "type": "cloud", "label": "Visual Agent", "sublabel": "Generates media assets", "tag": "Mesh API", "width": 140 },
+    { "id": "media_tools", "lane": "tool_layer", "col": 4, "type": "messagebus", "label": "Media & PDF Tools", "sublabel": "gen_image, compile_pdf", "tag": "Pillow / Mesh", "width": 140 },
+    { "id": "hitl_review", "lane": "input_review", "col": 4, "type": "frontend", "label": "Human Review", "sublabel": "Approve or feedback", "tag": "Interactive", "width": 140 },
+    { "id": "post_queue", "lane": "storage_loop", "col": 4, "type": "database", "label": "Post Queue (DB)", "sublabel": "enqueue_post_job", "tag": "Deterministic", "width": 140 },
+    { "id": "scheduler", "lane": "storage_loop", "col": 5, "type": "backend", "label": "Scheduler Worker", "sublabel": "APScheduler dispatch", "width": 140 },
+    { "id": "reflection_agent", "lane": "agent_core", "col": 5, "type": "backend", "label": "Reflection Agent", "sublabel": "Learns from metrics", "tag": "Learning Loop", "width": 140 },
+    { "id": "brand_store", "lane": "storage_loop", "col": 1, "type": "database", "label": "Brand & Playbook DB", "sublabel": "Profiles & audit trail", "width": 140 }
+  ],
+  "edges": [
+    { "id": "e_brief_safety", "from": "user_input", "to": "safety_agent", "label": "brief", "variant": "default" },
+    { "id": "e_safety_strat", "from": "safety_agent", "to": "strategist", "label": "validated", "variant": "emphasis" },
+    { "id": "e_strat_mcp", "from": "strategist", "to": "brand_mcp", "label": "query voice", "variant": "dashed" },
+    { "id": "e_mcp_db", "from": "brand_mcp", "to": "brand_store", "label": "fetch profile", "variant": "default" },
+    { "id": "e_strat_writer", "from": "strategist", "to": "writer", "label": "format & angle", "variant": "default" },
+    { "id": "e_writer_editor", "from": "writer", "to": "editor", "label": "draft", "variant": "emphasis" },
+    { "id": "e_editor_rubric", "from": "editor", "to": "rubric_tool", "label": "score & audit", "variant": "dashed" },
+    { "id": "e_editor_revise", "from": "editor", "to": "writer", "label": "critique / score", "variant": "dashed", "role": "return" },
+    { "id": "e_editor_vis", "from": "editor", "to": "visualizer", "label": "on approval", "variant": "emphasis" },
+    { "id": "e_vis_tool", "from": "visualizer", "to": "media_tools", "label": "render slides", "variant": "dashed" },
+    { "id": "e_vis_hitl", "from": "visualizer", "to": "hitl_review", "label": "packaged bundle", "variant": "default" },
+    { "id": "e_hitl_safety", "from": "hitl_review", "to": "safety_agent", "label": "feedback loop", "variant": "security", "role": "return" },
+    { "id": "e_safety_writer", "from": "safety_agent", "to": "writer", "label": "safe revision", "variant": "dashed" },
+    { "id": "e_hitl_queue", "from": "hitl_review", "to": "post_queue", "label": "approved", "variant": "emphasis" },
+    { "id": "e_queue_sched", "from": "post_queue", "to": "scheduler", "label": "dequeue job", "variant": "default" },
+    { "id": "e_sched_reflect", "from": "scheduler", "to": "reflection_agent", "label": "metrics telemetry", "variant": "emphasis" },
+    { "id": "e_reflect_store", "from": "reflection_agent", "to": "brand_store", "label": "update heuristics", "variant": "dashed", "role": "return" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Dedicated Tool & MCP Layer",
+      "items": [
+        "Brand Voice MCP: Provides get_brand_voice_profile and query_top_performing_patterns.",
+        "Rubric & Audit Tool: Deterministically scores drafts (score_rubric) and logs immutable records (log_audit).",
+        "Media & PDF Tool: Combines Mesh API image models with local PDF/Pillow slide compilation (compile_carousel_pdf)."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Closed-Loop Learning Architecture",
+      "items": [
+        "Scheduler publishes via background workers (APScheduler) without burning LLM cycles.",
+        "Reflection Agent retrieves metrics (fetch_post_metrics) and writes updated heuristics into Brand & Playbook DB."
+      ]
+    }
+  ]
+}
