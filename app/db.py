@@ -26,7 +26,7 @@ class Database:
         cursor.close()
 
     def create_schema(self) -> None:
-        from app.models import run  # noqa: F401
+        from app.models import memory, performance, run  # noqa: F401
 
         Base.metadata.create_all(self.engine)
 

@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     app_env: Literal["local", "test", "production"] = "local"
     mesh_api_key: SecretStr | None = None
     mesh_base_url: Literal["https://api.meshapi.ai/v1"] = MESH_BASE_URL
-    default_model: str = "openai/gpt-4o-mini"
+    default_model: str = "openai/omni-moderation-latest"
     database_url: str = "sqlite:///./creatoros.db"
     request_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
     default_max_attempts: int = Field(default=3, ge=1, le=10)

@@ -53,7 +53,7 @@ def test_platform_agent_config_accepts_allowlisted_tools():
     config = config_type(
         platform="linkedin",
         agent_id="writer",
-        model="openai/gpt-4o-mini",
+        model="openai/omni-moderation-latest",
         system_prompt_id="linkedin.writer.system",
         instruction_prompt_id="linkedin.writer.instructions",
         mcp_tool_ids=["get_brand_voice_profile"],
@@ -71,7 +71,7 @@ def test_platform_agent_config_has_bounded_output_and_editor_budgets():
     config = config_type(
         platform="linkedin",
         agent_id="writer",
-        model="openai/gpt-4o-mini",
+        model="openai/omni-moderation-latest",
         system_prompt_id="linkedin.writer.system",
         instruction_prompt_id="linkedin.writer.instructions",
     )
@@ -94,7 +94,7 @@ def test_platform_agent_config_rejects_unbounded_loop_settings(override):
     values = {
         "platform": "linkedin",
         "agent_id": "writer",
-        "model": "openai/gpt-4o-mini",
+        "model": "openai/omni-moderation-latest",
         "system_prompt_id": "linkedin.writer.system",
         "instruction_prompt_id": "linkedin.writer.instructions",
     }
@@ -110,7 +110,7 @@ def test_platform_agent_config_rejects_unknown_tool_ids():
         config_type(
             platform="linkedin",
             agent_id="writer",
-            model="openai/gpt-4o-mini",
+            model="openai/omni-moderation-latest",
             system_prompt_id="linkedin.writer.system",
             instruction_prompt_id="linkedin.writer.instructions",
             mcp_tool_ids=["unknown_tool"],
@@ -123,14 +123,28 @@ def test_all_linkedin_agent_configs_reference_existing_prompts():
     project_root = Path(__file__).resolve().parents[1]
     config_type = load_config_types()[1]
     prompt_loader = PromptLoader(project_root / "agent_prompts")
-    expected_agents = {"safety", "strategist", "writer", "editor"}
+    expected_agents = {
+        "safety",
+        "strategist",
+        "writer",
+        "editor",
+        "brand_voice",
+        "reflection",
+    }
     config_files = sorted((project_root / "platform_configs").glob("linkedin.*.json"))
     actual_agents = set()
     instruction_variables = {
         "safety": {"context": "initial brief", "text": "sample brief"},
-        "strategist": {"brief_json": "{}"},
-        "writer": {"brief_json": "{}", "strategy_json": "{}", "critique_json": "{}"},
+        "strategist": {"brief_json": "{}", "brand_memory_json": "{}"},
+        "writer": {
+            "brief_json": "{}",
+            "strategy_json": "{}",
+            "critique_json": "{}",
+            "brand_memory_json": "{}",
+        },
         "editor": {"brief_json": "{}", "strategy_json": "{}", "draft_json": "{}"},
+        "brand_voice": {"samples_json": "[]"},
+        "reflection": {"feedback_json": "{}", "prior_playbook_json": "{}"},
     }
 
     for config_file in config_files:
@@ -159,7 +173,7 @@ def test_platform_agent_config_rejects_nonpositive_limits(overrides):
     values = {
         "platform": "linkedin",
         "agent_id": "writer",
-        "model": "openai/gpt-4o-mini",
+        "model": "openai/omni-moderation-latest",
         "system_prompt_id": "linkedin.writer.system",
         "instruction_prompt_id": "linkedin.writer.instructions",
     }

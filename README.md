@@ -4,13 +4,13 @@ CreatorOS is a multi-agent content studio being built for the Agent Arena hackat
 
 ## Current implementation
 
-Four distinct LangGraph nodes use their own prompts and Pydantic output contracts: safety, strategist, writer, and editor. Instructor runs in JSON mode through the Mesh-backed OpenAI client and applies the per-agent validation retry budget; transient transport retries remain separate. Structured-call failures and Instructor retry logs are sanitized. The editor-to-writer loop is bounded; the API returns a run in `needs_review` even if it reaches the revision limit without passing the editor threshold. It never publishes content.
+Four distinct LangGraph nodes use their own prompts and Pydantic output contracts: safety, strategist, writer, and editor. Instructor runs in JSON mode through the Mesh-backed OpenAI client and applies the per-agent validation retry budget; transient transport retries remain separate. Structured-call failures and Instructor retry logs are sanitized. The editor-to-writer loop is bounded; the API returns a run in `needs_review` even if it reaches the revision limit without passing the editor threshold. A separate Reflection Agent updates the versioned content playbook from labeled feedback. CreatorOS does not publish content.
 
-Runs and append-only decision events are stored in local SQLite. The API exposes run creation, run retrieval, and ordered event retrieval. LinkedIn agent settings live under `platform_configs/`; Markdown prompts live under `agent_prompts/`.
+Runs, brand samples/profiles, performance feedback, playbook versions, and append-only decision events are stored in local SQLite. The API exposes run creation/retrieval, ordered event retrieval, brand profile ingestion/retrieval, and feedback submission. Three or more distinct user-provided posts create a versioned voice profile; active profile and playbook versions are injected into subsequent runs. Feedback must be labeled `user_entered` or `simulated`; simulated values are never presented as platform-fetched. The DeepEval benchmark and recorded measurements remain in progress. LinkedIn agent settings live under `platform_configs/`; Markdown prompts live under `agent_prompts/`.
 
 Every model request must go through `https://api.meshapi.ai/v1` using `MESH_API_KEY`. The application does not fall back to a direct model-provider endpoint.
 
-This phase has no human approval/rejection endpoint, user authentication, platform OAuth, brand-performance learning, media generation, or social publishing. The API is intended for local development only; do not expose it to a network until authentication and authorization are implemented.
+This phase has no human approval/rejection endpoint, user authentication, platform OAuth, media generation, or social publishing. The API is intended for local development only; do not expose it to a network until authentication and authorization are implemented.
 
 ## Setup
 
@@ -49,6 +49,45 @@ curl http://127.0.0.1:8000/api/v1/runs/<run_id>/events
 ```
 
 Unknown run IDs return `404`. A failed generation returns a sanitized `502` response with a run ID and failure code; provider details are not returned.
+
+## Brand voice samples
+
+Submit three or more distinct post samples as text. CreatorOS analyzes only the supplied content; it does not scrape connected social accounts.
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/brands/my-brand/samples \
+	-H 'Content-Type: application/json' \
+	-d '{"samples":[{"body":"First historical post text"},{"body":"Second historical post text"},{"body":"Third historical post text"}]}'
+```
+
+The response contains the extracted profile, profile version, and source sample IDs. Retrieve the active profile with:
+
+```bash
+curl http://127.0.0.1:8000/api/v1/brands/my-brand/profile
+```
+
+## Record performance feedback
+
+Feedback can be entered by a user or explicitly marked simulated. `published_at` is required; zero impressions are recorded without calculating an engagement rate or triggering a playbook update.
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/runs/<run_id>/feedback \
+	-H 'Content-Type: application/json' \
+	-d '{"source":"simulated","published_at":"2026-10-14T12:00:00Z","metrics":{"impressions":1000,"likes":85,"comments":12,"shares":9,"clicks":30,"saves":18}}'
+```
+
+The response includes the feedback source, derived engagement rate, audit event ID, and resulting playbook version. A subsequent run for the same brand loads that playbook.
+
+## Evaluation
+
+The optional DeepEval harness compares saved `writer_initial`/`editor_final` drafts and `cold_start`/`learned` drafts. Populate a case file from actual CreatorOS runs using the schema documented in `eval/cases/README.md`, then run:
+
+```bash
+python -m pip install -e '.[eval]'
+python -m eval.benchmark --input eval/cases/my-run-pairs.json --output eval/results/phase3.json
+```
+
+The judge uses the Mesh-backed model adapter, and DeepEval telemetry is disabled. No benchmark scores are recorded yet; a valid `MESH_API_KEY` and actual run outputs are required. Do not treat unit-test fake scores as results.
 
 ## Test
 

@@ -3,8 +3,18 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from app.agents.contracts import ContentBrief, DraftContent, EditorCritique, StrategyDecision
+from app.agents.contracts import (
+    BrandMemoryContext,
+    BrandVoiceProfile,
+    ContentBrief,
+    DraftContent,
+    EditorCritique,
+    PlaybookRule,
+    StrategyDecision,
+)
 from app.config import PlatformAgentConfig
+from app.repositories.brand_memory import BrandMemoryRepository
+from app.repositories.performance import PerformanceRepository
 from app.repositories.runs import RunRepository
 from app.workflows.state import ContentState
 
@@ -13,6 +23,9 @@ def build_content_graph(
     agents: dict[str, Any],
     repository: RunRepository,
     config: PlatformAgentConfig,
+    *,
+    brand_memory_repository: BrandMemoryRepository | None = None,
+    performance_repository: PerformanceRepository | None = None,
 ) -> CompiledStateGraph:
     def persist(
         state: ContentState,
@@ -37,9 +50,52 @@ def build_content_graph(
             {"allowed": verdict.allowed, "risk_categories": verdict.risk_categories},
         )
 
+    def load_memory_node(state: ContentState) -> ContentState:
+        brief = ContentBrief.model_validate(state["brief"])
+        profile_version = None
+        playbook_version = None
+        profile = None
+        playbook_rules = []
+        if brief.brand_id is not None:
+            if brand_memory_repository is None or performance_repository is None:
+                raise RuntimeError("brand memory repositories are not configured")
+            active_profile = brand_memory_repository.get_active_profile(brief.brand_id)
+            active_playbook = performance_repository.get_active_playbook(brief.brand_id)
+            if active_profile is not None:
+                profile = BrandVoiceProfile.model_validate(active_profile.profile)
+                profile_version = active_profile.version
+            if active_playbook is not None:
+                playbook_rules = [
+                    PlaybookRule.model_validate(rule) for rule in active_playbook.rules
+                ]
+                playbook_version = active_playbook.version
+
+        memory_context = BrandMemoryContext(
+            profile=profile,
+            profile_version=profile_version,
+            playbook_rules=playbook_rules,
+            playbook_version=playbook_version,
+        )
+        updated = {
+            **state,
+            "brand_memory_context": memory_context.model_dump(mode="json"),
+            "status": "running",
+        }
+        return persist(
+            updated,
+            "brand_memory_loaded",
+            "memory",
+            "Loaded active brand voice and playbook versions for this run.",
+            {
+                "profile_version": profile_version,
+                "playbook_version": playbook_version,
+            },
+        )
+
     def strategist_node(state: ContentState) -> ContentState:
         brief = ContentBrief.model_validate(state["brief"])
-        strategy = agents["strategist"].plan(brief)
+        memory = BrandMemoryContext.model_validate(state.get("brand_memory_context", {}))
+        strategy = agents["strategist"].plan(brief, memory=memory)
         updated = {**state, "strategy": strategy.model_dump(), "status": "running"}
         return persist(
             updated,
@@ -52,9 +108,10 @@ def build_content_graph(
     def writer_node(state: ContentState) -> ContentState:
         brief = ContentBrief.model_validate(state["brief"])
         strategy = StrategyDecision.model_validate(state["strategy"])
+        memory = BrandMemoryContext.model_validate(state.get("brand_memory_context", {}))
         critique_data = state.get("latest_critique")
         critique = EditorCritique.model_validate(critique_data) if critique_data else None
-        draft = agents["writer"].write(brief, strategy, critique)
+        draft = agents["writer"].write(brief, strategy, critique, memory=memory)
         draft_data = draft.model_dump()
         history = [*state.get("draft_history", []), draft_data]
         is_revision = state.get("revision_count", 0) > 0
@@ -128,21 +185,23 @@ def build_content_graph(
         )
 
     def route_after_safety(state: ContentState) -> str:
-        return "strategist" if state["safety_verdict"]["allowed"] else "finish"
+        return "load_memory" if state["safety_verdict"]["allowed"] else "finish"
 
     def route_after_editor(state: ContentState) -> str:
         return "writer" if state.get("revision_requested", False) else "finish"
 
     graph = StateGraph(ContentState)
     graph.add_node("safety", safety_node)
+    graph.add_node("load_memory", load_memory_node)
     graph.add_node("strategist", strategist_node)
     graph.add_node("writer", writer_node)
     graph.add_node("editor", editor_node)
     graph.add_node("finish", finish_node)
     graph.add_edge(START, "safety")
     graph.add_conditional_edges(
-        "safety", route_after_safety, {"strategist": "strategist", "finish": "finish"}
+        "safety", route_after_safety, {"load_memory": "load_memory", "finish": "finish"}
     )
+    graph.add_edge("load_memory", "strategist")
     graph.add_edge("strategist", "writer")
     graph.add_edge("writer", "editor")
     graph.add_conditional_edges(

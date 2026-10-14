@@ -4,6 +4,7 @@ from typing import Any, TypedDict
 class ContentState(TypedDict, total=False):
     run_id: str
     brief: dict[str, Any]
+    brand_memory_context: dict[str, Any]
     safety_verdict: dict[str, Any]
     strategy: dict[str, Any]
     draft: dict[str, Any]

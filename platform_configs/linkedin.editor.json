@@ -1,7 +1,7 @@
 {
   "platform": "linkedin",
   "agent_id": "editor",
-  "model": "openai/gpt-4o-mini",
+  "model": "openai/omni-moderation-latest",
   "max_tokens": 1200,
   "timeout_seconds": 30,
   "max_attempts": 3,

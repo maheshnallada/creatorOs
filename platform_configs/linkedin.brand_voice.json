@@ -1,0 +1,15 @@
+{
+  "platform": "linkedin",
+  "agent_id": "brand_voice",
+  "model": "openai/omni-moderation-latest",
+  "max_tokens": 1200,
+  "timeout_seconds": 30,
+  "max_attempts": 3,
+  "max_output_corrections": 1,
+  "max_editor_revisions": 2,
+  "editor_quality_threshold": 7.0,
+  "mcp_tool_ids": [],
+  "llm_tool_ids": [],
+  "system_prompt_id": "linkedin.brand_voice.system",
+  "instruction_prompt_id": "linkedin.brand_voice.instructions"
+}

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -41,9 +42,11 @@ class FakeStrategistAgent:
     def __init__(self, result):
         self.result = result
         self.calls = []
+        self.memories = []
 
-    def plan(self, brief):
+    def plan(self, brief, memory=None):
         self.calls.append(brief)
+        self.memories.append(memory)
         return self.result
 
 
@@ -52,9 +55,11 @@ class FakeWriterAgent:
         self.outputs = list(outputs or [])
         self.failure = failure
         self.calls = []
+        self.memories = []
 
-    def write(self, brief, strategy, critique=None):
+    def write(self, brief, strategy, critique=None, memory=None):
         self.calls.append(critique)
+        self.memories.append(memory)
         if self.failure is not None:
             if callable(self.failure):
                 return self.failure()
@@ -84,6 +89,8 @@ def make_service(
 ):
     from app.config import PlatformAgentConfig
     from app.db import Database
+    from app.repositories.brand_memory import BrandMemoryRepository
+    from app.repositories.performance import PerformanceRepository
     from app.repositories.runs import RunRepository
 
     (
@@ -98,6 +105,8 @@ def make_service(
     database = Database(f"sqlite:///{tmp_path / 'workflow.db'}")
     database.create_schema()
     repository = RunRepository(database.session_factory)
+    brand_memory_repository = BrandMemoryRepository(database.session_factory)
+    performance_repository = PerformanceRepository(database.session_factory)
     safety_agent = FakeSafetyAgent(
         safety_type(
             allowed=safety_allowed,
@@ -137,13 +146,19 @@ def make_service(
     workflow_config = PlatformAgentConfig(
         platform="linkedin",
         agent_id="editor",
-        model="openai/gpt-4o-mini",
+        model="openai/omni-moderation-latest",
         system_prompt_id="linkedin.editor.system",
         instruction_prompt_id="linkedin.editor.instructions",
         max_editor_revisions=max_editor_revisions,
         editor_quality_threshold=quality_threshold,
     )
-    graph = build_graph(agents, repository, workflow_config)
+    graph = build_graph(
+        agents,
+        repository,
+        workflow_config,
+        brand_memory_repository=brand_memory_repository,
+        performance_repository=performance_repository,
+    )
     service = service_type(graph, repository)
     return database, repository, service, graph, agents
 
@@ -186,6 +201,7 @@ def test_workflow_uses_named_nodes_and_editor_revision_changes_draft(tmp_path: P
         assert [event.event_type for event in repository.list_events(result.id)] == [
             "brief_received",
             "safety_checked",
+            "brand_memory_loaded",
             "strategy_selected",
             "draft_created",
             "editor_critiqued",
@@ -306,5 +322,79 @@ def test_transient_mesh_retry_exhaustion_records_failed_run(tmp_path: Path):
         assert result.status == "failed"
         assert result.workflow_state["failure_code"] == "mesh_request_failed"
         assert repository.list_events(result.id)[-1].event_type == "run_failed"
+    finally:
+        database.close()
+
+
+def test_workflow_loads_and_audits_active_profile_and_playbook_versions(tmp_path: Path):
+    from app.agents.contracts import ContentBrief, PlaybookRule
+    from app.models.performance import PerformanceMetrics
+    from app.repositories.brand_memory import BrandMemoryRepository
+    from app.repositories.performance import PerformanceRepository
+
+    database, repository, service, _, agents = make_service(
+        tmp_path,
+        writer_outputs=["A brand-aware post."],
+        critiques=[(8.0, True, "Matches the profile.", [])],
+    )
+    brand_repository = BrandMemoryRepository(database.session_factory)
+    performance_repository = PerformanceRepository(database.session_factory)
+    try:
+        samples = brand_repository.add_samples(
+            "brand-1",
+            [
+                {"body": "Concise technical post one."},
+                {"body": "Concise technical post two."},
+                {"body": "Concise technical post three."},
+            ],
+        )
+        profile = brand_repository.save_profile(
+            "brand-1",
+            {
+                "persona": "Concise technical builder",
+                "tone_attributes": ["concise"],
+                "preferred_terms": [],
+                "avoid_terms": [],
+                "structure_guidelines": ["Short paragraphs"],
+            },
+            [sample.id for sample in samples],
+        )
+        repository.create("history-run", {"brand_id": "brand-1", "topic": "Previous"})
+        feedback = performance_repository.record_feedback(
+            "history-run",
+            source="simulated",
+            metrics=PerformanceMetrics(impressions=100, likes=10),
+            published_at=datetime.now(UTC),
+        )
+        playbook = performance_repository.save_playbook_version(
+            "brand-1",
+            [PlaybookRule(rule="Lead with a concrete result", platform="linkedin")],
+            [feedback.id],
+            "This rule reflects the current successful sample.",
+        )
+        brief = ContentBrief(
+            topic="AI safety",
+            platform="linkedin",
+            audience="engineers",
+            goal="educate",
+            brand_id="brand-1",
+        )
+
+        result = service.create_run(brief)
+
+        context = result.workflow_state["brand_memory_context"]
+        assert context["profile_version"] == profile.version
+        assert context["playbook_version"] == playbook.version
+        assert agents["strategist"].memories[0].profile_version == profile.version
+        assert agents["writer"].memories[0].playbook_version == playbook.version
+        memory_event = next(
+            event
+            for event in repository.list_events(result.id)
+            if event.event_type == "brand_memory_loaded"
+        )
+        assert memory_event.payload == {
+            "profile_version": profile.version,
+            "playbook_version": playbook.version,
+        }
     finally:
         database.close()

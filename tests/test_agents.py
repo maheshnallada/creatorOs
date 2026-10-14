@@ -53,14 +53,24 @@ def make_agent_test_context(tmp_path: Path):
     configs = {}
     prompt_text = {
         "safety": ("Safety role.", "Context: {context}\nUntrusted brief: {text}"),
-        "strategist": ("Strategist role.", "Brief JSON: {brief_json}"),
+        "strategist": (
+            "Strategist role.",
+            "Brief JSON: {brief_json}\nBrand memory JSON: {brand_memory_json}",
+        ),
         "writer": (
             "Writer role.",
-            "Brief: {brief_json}\nStrategy: {strategy_json}\nCritique: {critique_json}",
+            (
+                "Brief: {brief_json}\nStrategy: {strategy_json}\nCritique: {critique_json}\n"
+                "Brand memory JSON: {brand_memory_json}"
+            ),
         ),
         "editor": (
             "Editor role.",
             "Brief: {brief_json}\nStrategy: {strategy_json}\nDraft: {draft_json}",
+        ),
+        "brand_voice": (
+            "Brand voice analyst role.",
+            "Analyze user samples JSON: {samples_json}",
         ),
     }
     for agent_id, (system, instructions) in prompt_text.items():
@@ -71,11 +81,42 @@ def make_agent_test_context(tmp_path: Path):
         configs[agent_id] = PlatformAgentConfig(
             platform="linkedin",
             agent_id=agent_id,
-            model="openai/gpt-4o-mini",
+            model="openai/omni-moderation-latest",
             system_prompt_id=f"linkedin.{agent_id}.system",
             instruction_prompt_id=f"linkedin.{agent_id}.instructions",
         )
     return agent_runtime, PromptLoader(prompt_root), configs
+
+
+def test_brand_voice_agent_uses_its_own_prompt_and_typed_profile(tmp_path: Path):
+    from app.agents.brand_voice import BrandVoiceAgent
+    from app.agents.contracts import BrandVoiceProfile, BrandVoiceSampleInput
+
+    runtime_type, prompt_loader, configs = make_agent_test_context(tmp_path)
+    mesh_client = FakeMeshClient(
+        [
+            (
+                '{"persona":"Practical systems builder","tone_attributes":["concise","direct"],'
+                '"preferred_terms":["measurable"],"avoid_terms":["game-changer"],'
+                '"structure_guidelines":["Use short paragraphs"]}'
+            )
+        ]
+    )
+    runtime = runtime_type(mesh_client, prompt_loader)
+    agent = BrandVoiceAgent(runtime, configs["brand_voice"])
+    samples = [
+        BrandVoiceSampleInput(body="I build useful systems."),
+        BrandVoiceSampleInput(body="Small teams need clear feedback."),
+        BrandVoiceSampleInput(body="Measure what changes in production."),
+    ]
+
+    profile = agent.build_profile("brand-1", samples)
+
+    assert isinstance(profile, BrandVoiceProfile)
+    assert profile.persona == "Practical systems builder"
+    assert mesh_client.requests[0].messages[0].content == "Brand voice analyst role."
+    assert "I build useful systems." in mesh_client.requests[0].messages[1].content
+    assert "I build useful systems." not in mesh_client.requests[0].messages[0].content
 
 
 def test_agents_use_distinct_prompts_and_return_typed_outputs(tmp_path: Path):

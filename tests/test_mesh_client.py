@@ -50,7 +50,7 @@ def test_mesh_client_posts_to_mesh_and_normalizes_result():
                 "id": "chatcmpl-test",
                 "object": "chat.completion",
                 "created": 1,
-                "model": "openai/gpt-4o-mini",
+                "model": "openai/omni-moderation-latest",
                 "choices": [
                     {
                         "index": 0,
@@ -70,7 +70,7 @@ def test_mesh_client_posts_to_mesh_and_normalizes_result():
     mesh_client = client_type(mesh_settings(), http_client=http_client)
     result = mesh_client.complete(
         request_type(
-            model="openai/gpt-4o-mini",
+            model="openai/omni-moderation-latest",
             messages=[{"role": "user", "content": "Create a post."}],
             max_tokens=100,
             timeout_seconds=3.0,
@@ -91,7 +91,7 @@ def test_mesh_client_posts_to_mesh_and_normalizes_result():
 
     assert observed["url"] == "https://api.meshapi.ai/v1/chat/completions"
     assert observed["authorization"] == "Bearer test-mesh-key"
-    assert observed["body"]["model"] == "openai/gpt-4o-mini"
+    assert observed["body"]["model"] == "openai/omni-moderation-latest"
     assert observed["body"]["tools"][0]["function"]["name"] == "format_platform_schema"
     assert observed["body"]["response_format"] == {"type": "json_object"}
     assert observed["timeout"]["read"] == 3.0
@@ -113,7 +113,7 @@ def test_mesh_client_redacts_provider_error_details():
     with pytest.raises(error_type) as error:
         mesh_client.complete(
             {
-                "model": "openai/gpt-4o-mini",
+                "model": "openai/omni-moderation-latest",
                 "messages": [{"role": "user", "content": "hello"}],
             }
         )
@@ -133,7 +133,7 @@ def test_mesh_client_refuses_calls_without_configured_key():
     with pytest.raises(missing_key_type, match="MESH_API_KEY"):
         mesh_client.complete(
             request_type(
-                model="openai/gpt-4o-mini",
+                model="openai/omni-moderation-latest",
                 messages=[{"role": "user", "content": "hello"}],
             )
         )
@@ -154,7 +154,7 @@ def test_mesh_client_uses_instructor_and_mesh_for_structured_response():
                 "id": "chatcmpl-structured",
                 "object": "chat.completion",
                 "created": 1,
-                "model": "openai/gpt-4o-mini",
+                "model": "openai/omni-moderation-latest",
                 "choices": [
                     {
                         "index": 0,
@@ -170,7 +170,7 @@ def test_mesh_client_uses_instructor_and_mesh_for_structured_response():
     mesh_client = client_type(mesh_settings(), http_client=http_client)
     result = mesh_client.complete_structured(
         request_type(
-            model="openai/gpt-4o-mini",
+            model="openai/omni-moderation-latest",
             messages=[{"role": "user", "content": "Write a caption."}],
             max_tokens=80,
             timeout_seconds=4.0,
@@ -202,7 +202,7 @@ def test_mesh_client_instructor_retries_validation_only_to_limit():
                 "id": f"chatcmpl-{calls}",
                 "object": "chat.completion",
                 "created": 1,
-                "model": "openai/gpt-4o-mini",
+                "model": "openai/omni-moderation-latest",
                 "choices": [
                     {
                         "index": 0,
@@ -218,7 +218,7 @@ def test_mesh_client_instructor_retries_validation_only_to_limit():
     mesh_client = client_type(mesh_settings(), http_client=http_client)
     result = mesh_client.complete_structured(
         request_type(
-            model="openai/gpt-4o-mini",
+            model="openai/omni-moderation-latest",
             messages=[{"role": "user", "content": "Write a caption."}],
         ),
         response_model=StructuredCaption,
@@ -243,7 +243,7 @@ def test_mesh_client_instructor_stops_at_validation_retry_limit():
                 "id": f"chatcmpl-{calls}",
                 "object": "chat.completion",
                 "created": 1,
-                "model": "openai/gpt-4o-mini",
+                "model": "openai/omni-moderation-latest",
                 "choices": [
                     {
                         "index": 0,
@@ -260,7 +260,7 @@ def test_mesh_client_instructor_stops_at_validation_retry_limit():
     with pytest.raises(structured_error_type, match="correction limit"):
         mesh_client.complete_structured(
             request_type(
-                model="openai/gpt-4o-mini",
+                model="openai/omni-moderation-latest",
                 messages=[{"role": "user", "content": "Write a caption."}],
             ),
             response_model=StructuredCaption,
@@ -284,7 +284,7 @@ def test_mesh_client_instructor_zero_retry_budget_makes_one_call():
                 "id": f"chatcmpl-{calls}",
                 "object": "chat.completion",
                 "created": 1,
-                "model": "openai/gpt-4o-mini",
+                "model": "openai/omni-moderation-latest",
                 "choices": [
                     {
                         "index": 0,
@@ -300,7 +300,7 @@ def test_mesh_client_instructor_zero_retry_budget_makes_one_call():
     with pytest.raises(structured_error_type, match="correction limit"):
         mesh_client.complete_structured(
             request_type(
-                model="openai/gpt-4o-mini",
+                model="openai/omni-moderation-latest",
                 messages=[{"role": "user", "content": "Write a caption."}],
             ),
             response_model=StructuredCaption,
@@ -323,7 +323,7 @@ def test_mesh_client_sanitizes_structured_provider_errors(caplog):
     with pytest.raises(request_error_type) as error:
         mesh_client.complete_structured(
             {
-                "model": "openai/gpt-4o-mini",
+                "model": "openai/omni-moderation-latest",
                 "messages": [{"role": "user", "content": "Write a caption."}],
             },
             response_model=StructuredCaption,

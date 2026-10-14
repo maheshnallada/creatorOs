@@ -26,9 +26,12 @@ dev = [
     "pytest>=8,<9",
     "ruff>=0.8,<1",
 ]
+eval = [
+    "deepeval>=2,<4",
+]
 
 [tool.setuptools.packages.find]
-include = ["app*"]
+include = ["app*", "eval*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

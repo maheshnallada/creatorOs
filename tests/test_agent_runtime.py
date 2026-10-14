@@ -54,7 +54,7 @@ def build_runtime(
     config = PlatformAgentConfig(
         platform="linkedin",
         agent_id="writer",
-        model="openai/gpt-4o-mini",
+        model="openai/omni-moderation-latest",
         timeout_seconds=timeout_seconds,
         max_tokens=max_tokens,
         max_output_corrections=max_output_corrections,
