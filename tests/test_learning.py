@@ -398,7 +398,7 @@ def test_feedback_playbook_update_is_loaded_by_next_generation(tmp_path: Path):
     config = PlatformAgentConfig(
         platform="linkedin",
         agent_id="editor",
-        model="openai/omni-moderation-latest",
+        model="openai/gpt-oss-120b",
         system_prompt_id="linkedin.editor.system",
         instruction_prompt_id="linkedin.editor.instructions",
     )
@@ -455,7 +455,7 @@ def test_reflection_agent_returns_typed_mesh_insight(tmp_path: Path):
     config = PlatformAgentConfig(
         platform="linkedin",
         agent_id="reflection",
-        model="openai/omni-moderation-latest",
+        model="openai/gpt-oss-120b",
         system_prompt_id="linkedin.reflection.system",
         instruction_prompt_id="linkedin.reflection.instructions",
     )
@@ -463,6 +463,9 @@ def test_reflection_agent_returns_typed_mesh_insight(tmp_path: Path):
     class FakeStructuredMesh:
         def __init__(self):
             self.requests = []
+
+        def resolve_model(self, configured_model):
+            return configured_model
 
         def complete_structured(self, request, response_model, max_retries):
             self.requests.append(request)

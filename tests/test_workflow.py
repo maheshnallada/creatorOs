@@ -146,7 +146,7 @@ def make_service(
     workflow_config = PlatformAgentConfig(
         platform="linkedin",
         agent_id="editor",
-        model="openai/omni-moderation-latest",
+        model="openai/gpt-oss-120b",
         system_prompt_id="linkedin.editor.system",
         instruction_prompt_id="linkedin.editor.instructions",
         max_editor_revisions=max_editor_revisions,
@@ -292,6 +292,28 @@ def test_mesh_failure_records_sanitized_failed_run(tmp_path: Path):
         event_types = [event.event_type for event in repository.list_events(result.id)]
         assert event_types[-1] == "run_failed"
         assert "401" not in repository.list_events(result.id)[-1].reason
+    finally:
+        database.close()
+
+
+def test_groq_failure_records_groq_specific_failure_code(tmp_path: Path):
+    from app.llm.mesh_client import LLMProviderRequestError
+
+    brief_type, _, _, _, _, _, _ = load_workflow_types()
+    database, repository, service, _, _ = make_service(
+        tmp_path,
+        writer_failure=LLMProviderRequestError(
+            "Groq API request failed with HTTP 401", provider="groq"
+        ),
+    )
+    try:
+        result = service.create_run(make_brief(brief_type))
+
+        assert result.status == "failed"
+        assert result.workflow_state["failure_code"] == "groq_request_failed"
+        assert repository.list_events(result.id)[-1].payload == {
+            "failure_code": "groq_request_failed"
+        }
     finally:
         database.close()
 

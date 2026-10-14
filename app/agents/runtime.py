@@ -3,7 +3,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from app.config import PlatformAgentConfig
-from app.llm.mesh_client import LLMRequest, MeshClient, MeshStructuredOutputError
+from app.llm.mesh_client import LLMClient, LLMRequest, LLMStructuredOutputError
 from app.llm.retry import RetryPolicy
 from app.prompts.loader import PromptLoader
 
@@ -15,8 +15,8 @@ class StructuredOutputError(RuntimeError):
 
 
 class AgentRuntime:
-    def __init__(self, mesh_client: MeshClient, prompt_loader: PromptLoader):
-        self._mesh_client = mesh_client
+    def __init__(self, llm_client: LLMClient, prompt_loader: PromptLoader):
+        self._llm_client = llm_client
         self._prompt_loader = prompt_loader
 
     def generate_json(
@@ -39,18 +39,18 @@ class AgentRuntime:
         retry_policy = RetryPolicy(max_attempts=agent_config.max_attempts)
 
         request = LLMRequest(
-            model=agent_config.model,
+            model=self._llm_client.resolve_model(agent_config.model),
             messages=messages,
             max_tokens=agent_config.max_tokens,
             timeout_seconds=agent_config.timeout_seconds,
         )
         try:
             return retry_policy.run(
-                lambda: self._mesh_client.complete_structured(
+                lambda: self._llm_client.complete_structured(
                     request,
                     response_model=output_model,
                     max_retries=agent_config.max_output_corrections,
                 )
             )
-        except MeshStructuredOutputError as error:
+        except LLMStructuredOutputError as error:
             raise StructuredOutputError(str(error)) from error

@@ -1,7 +1,7 @@
 {
   "platform": "linkedin",
   "agent_id": "safety",
-  "model": "openai/omni-moderation-latest",
+  "model": "openai/gpt-oss-120b",
   "max_tokens": 512,
   "timeout_seconds": 30,
   "max_attempts": 3,

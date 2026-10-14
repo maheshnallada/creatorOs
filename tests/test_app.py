@@ -21,6 +21,19 @@ def test_health_endpoint_works_without_mesh_credentials(monkeypatch):
     assert response.json() == {"status": "ok"}
 
 
+def test_health_endpoint_works_without_provider_credentials(monkeypatch):
+    for name in ("LLM_PROVIDER", "MESH_API_KEY", "GROQ_API_KEY", "GROQ_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+    create_app = load_create_app()
+    from app.config import Settings
+
+    with TestClient(create_app(Settings(_env_file=None))) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
 def test_app_uses_injected_settings():
     from app.config import Settings
 

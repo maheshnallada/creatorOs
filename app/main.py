@@ -12,7 +12,7 @@ from app.agents.strategist import StrategistAgent
 from app.agents.writer import WriterAgent
 from app.config import PlatformAgentConfig, Settings
 from app.db import Database
-from app.llm.mesh_client import MeshClient
+from app.llm.mesh_client import LLMClient
 from app.prompts.loader import PromptLoader
 from app.repositories.brand_memory import BrandMemoryRepository
 from app.repositories.performance import PerformanceRepository
@@ -48,9 +48,9 @@ def _create_default_components(settings: Settings):
     repository = RunRepository(database.session_factory)
     brand_memory_repository = BrandMemoryRepository(database.session_factory)
     performance_repository = PerformanceRepository(database.session_factory)
-    mesh_client = MeshClient(settings)
+    llm_client = LLMClient(settings)
     prompt_loader = PromptLoader(PROJECT_ROOT / "agent_prompts")
-    runtime = AgentRuntime(mesh_client, prompt_loader)
+    runtime = AgentRuntime(llm_client, prompt_loader)
     configs = _load_agent_configs()
     agents = {
         "safety": SafetyAgent(runtime, configs["safety"]),
@@ -75,7 +75,7 @@ def _create_default_components(settings: Settings):
         brand_memory_repository,
         performance_repository,
         brand_voice_agent,
-        mesh_client,
+        llm_client,
         service,
         learning_service,
     )
@@ -87,7 +87,7 @@ def create_app(
     creation_service: CreationService | None = None,
     run_repository: RunRepository | None = None,
     database: Database | None = None,
-    mesh_client: MeshClient | None = None,
+    mesh_client: LLMClient | None = None,
     brand_memory_repository: BrandMemoryRepository | None = None,
     performance_repository: PerformanceRepository | None = None,
     brand_voice_agent: BrandVoiceAgent | None = None,
@@ -122,6 +122,7 @@ def create_app(
     app.state.settings = settings
     app.state.database = database
     app.state.mesh_client = mesh_client
+    app.state.llm_client = mesh_client
     app.state.run_repository = run_repository
     app.state.creation_service = creation_service
     app.state.brand_memory_repository = brand_memory_repository

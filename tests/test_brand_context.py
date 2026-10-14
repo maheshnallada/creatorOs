@@ -7,6 +7,9 @@ class MemoryAwareMeshClient:
     def __init__(self):
         self.requests = []
 
+    def resolve_model(self, configured_model):
+        return configured_model
+
     def complete_structured(self, request, response_model, max_retries):
         prompt = request.messages[-1].content
         self.requests.append(request)
@@ -63,7 +66,7 @@ def test_distinct_brand_profiles_change_strategy_and_writer_outputs(tmp_path: Pa
         configs[agent_id] = PlatformAgentConfig(
             platform="linkedin",
             agent_id=agent_id,
-            model="openai/omni-moderation-latest",
+            model="openai/gpt-oss-120b",
             system_prompt_id=f"linkedin.{agent_id}.system",
             instruction_prompt_id=f"linkedin.{agent_id}.instructions",
         )

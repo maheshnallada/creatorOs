@@ -157,7 +157,7 @@ def write_results(results: list[EvaluationResult], output_path: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Score saved CreatorOS draft pairs with Mesh-backed DeepEval"
+        description="Score saved CreatorOS draft pairs with the configured LLM provider"
     )
     parser.add_argument(
         "--input", type=Path, required=True, help="JSON file containing actual paired drafts"
@@ -168,24 +168,30 @@ def main(argv: list[str] | None = None) -> int:
         default=Path("eval/results/phase3.json"),
         help="Path for measured benchmark results",
     )
-    parser.add_argument("--model", default="openai/omni-moderation-latest", help="Mesh model ID for the judge")
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Override the configured provider's judge model",
+    )
     args = parser.parse_args(argv)
 
     from app.config import Settings
-    from app.llm.mesh_client import MeshClient
-    from eval.mesh_model import MeshDeepEvalModel
+    from app.llm.mesh_client import LLMClient, LLMConfigurationError, MissingProviderApiKey
+    from eval.mesh_model import ProviderDeepEvalModel
 
     settings = Settings()
-    if settings.mesh_api_key is None:
-        parser.error("MESH_API_KEY is required; no benchmark results were written")
-    cases = [EvaluationCase.model_validate(item) for item in json.loads(args.input.read_text())]
-    mesh_client = MeshClient(settings)
+    llm_client = LLMClient(settings)
     try:
-        model = MeshDeepEvalModel(mesh_client, args.model)
+        try:
+            default_model = llm_client.resolve_model(settings.default_model)
+        except (MissingProviderApiKey, LLMConfigurationError) as error:
+            parser.error(f"{error}; no benchmark results were written")
+        model = ProviderDeepEvalModel(llm_client, args.model or default_model)
+        cases = [EvaluationCase.model_validate(item) for item in json.loads(args.input.read_text())]
         results = run_benchmarks(cases, model)
         write_results(results, args.output)
     finally:
-        mesh_client.close()
+        llm_client.close()
     return 0
 
 

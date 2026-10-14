@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import MESH_BASE_URL, Settings
 
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
 
 
@@ -46,23 +48,28 @@ class LLMResult(BaseModel):
     finish_reason: str | None = None
 
 
-class MeshRequestError(RuntimeError):
-    """A sanitized failure returned by the Mesh gateway."""
+class LLMProviderRequestError(RuntimeError):
+    """A sanitized failure returned by the selected LLM provider."""
 
-    def __init__(self, message: str, *, retryable: bool = False):
+    def __init__(self, message: str, *, provider: Literal["mesh", "groq"] = "mesh", retryable: bool = False):
         super().__init__(message)
+        self.provider = provider
         self.retryable = retryable
 
 
-class MissingMeshApiKey(RuntimeError):
-    """Raised when a model request is attempted without Mesh credentials."""
+class MissingProviderApiKey(RuntimeError):
+    """Raised when a model request is attempted without selected-provider credentials."""
 
 
-class MeshStructuredOutputError(RuntimeError):
+class LLMConfigurationError(RuntimeError):
+    """Raised when the selected LLM provider is missing required configuration."""
+
+
+class LLMStructuredOutputError(RuntimeError):
     """Raised when Instructor exhausts the configured Pydantic validation retries."""
 
 
-class _MeshSecretFilter(logging.Filter):
+class _ProviderSecretFilter(logging.Filter):
     def __init__(self, secret: str | None):
         super().__init__()
         self._secret = secret
@@ -76,30 +83,63 @@ class _MeshSecretFilter(logging.Filter):
         return True
 
 
-class MeshClient:
+class LLMClient:
     def __init__(
         self,
         settings: Settings,
         *,
         http_client: httpx.Client | None = None,
     ):
-        self._api_key = (
-            settings.mesh_api_key.get_secret_value() if settings.mesh_api_key is not None else None
-        )
+        self._provider = settings.llm_provider
+        if self._provider == "mesh":
+            api_key = settings.mesh_api_key
+            self._base_url = MESH_BASE_URL
+            self._api_key_name = "MESH_API_KEY"
+            self._provider_name = "Mesh"
+        else:
+            api_key = settings.groq_api_key
+            self._base_url = GROQ_BASE_URL
+            self._api_key_name = "GROQ_API_KEY"
+            self._provider_name = "Groq"
+        self._api_key = api_key.get_secret_value() if api_key is not None else None
+        self._groq_model = settings.groq_model
         self._instructor_logger = logging.getLogger("instructor.v2.retry")
-        self._secret_filter = _MeshSecretFilter(self._api_key)
+        self._secret_filter = _ProviderSecretFilter(self._api_key)
         self._instructor_logger.addFilter(self._secret_filter)
         self._client = OpenAI(
-            base_url=MESH_BASE_URL,
-            api_key=self._api_key or "missing-local-mesh-key",
+            base_url=self._base_url,
+            api_key=self._api_key or "missing-local-provider-key",
             timeout=settings.request_timeout_seconds,
             http_client=http_client,
         )
 
-    def complete(self, request: LLMRequest | dict[str, Any]) -> LLMResult:
+    def _ensure_configured(self) -> None:
         if self._api_key is None:
-            raise MissingMeshApiKey("MESH_API_KEY must be configured before making model calls")
+            raise MissingProviderApiKey(
+                f"{self._api_key_name} must be configured before making model calls"
+            )
+        if self._provider == "groq" and not self._groq_model:
+            raise LLMConfigurationError("GROQ_MODEL must be configured before making Groq model calls")
 
+    @property
+    def provider(self) -> Literal["mesh", "groq"]:
+        return self._provider
+
+    def resolve_model(self, configured_model: str) -> str:
+        self._ensure_configured()
+        if self._provider == "mesh":
+            return configured_model
+        return self._groq_model
+
+    def _provider_error(self, message: str, *, retryable: bool = False) -> LLMProviderRequestError:
+        return LLMProviderRequestError(
+            message,
+            provider=self._provider,
+            retryable=retryable,
+        )
+
+    def complete(self, request: LLMRequest | dict[str, Any]) -> LLMResult:
+        self._ensure_configured()
         normalized_request = LLMRequest.model_validate(request)
         try:
             client = (
@@ -116,15 +156,17 @@ class MeshClient:
                 response_format=normalized_request.response_format,
             )
         except APIStatusError as error:
-            raise MeshRequestError(
-                f"Mesh API request failed with HTTP {error.status_code}",
+            raise self._provider_error(
+                f"{self._provider_name} API request failed with HTTP {error.status_code}",
                 retryable=error.status_code in {408, 409, 429}
                 or (error.status_code is not None and error.status_code >= 500),
             ) from error
         except APIConnectionError as error:
-            raise MeshRequestError("Mesh API connection failed", retryable=True) from error
+            raise self._provider_error(
+                f"{self._provider_name} API connection failed", retryable=True
+            ) from error
         except APIError as error:
-            raise MeshRequestError("Mesh API request failed") from error
+            raise self._provider_error(f"{self._provider_name} API request failed") from error
 
         choice = response.choices[0]
         usage = response.usage
@@ -148,10 +190,9 @@ class MeshClient:
         response_model: type[OutputModel],
         max_retries: int,
     ) -> OutputModel:
-        if self._api_key is None:
-            raise MissingMeshApiKey("MESH_API_KEY must be configured before making model calls")
         if max_retries < 0:
             raise ValueError("max_retries must not be negative")
+        self._ensure_configured()
 
         normalized_request = LLMRequest.model_validate(request)
         client = (
@@ -170,33 +211,43 @@ class MeshClient:
                 max_retries=max_retries,
             )
         except APIStatusError as error:
-            raise MeshRequestError(
-                f"Mesh API request failed with HTTP {error.status_code}",
+            raise self._provider_error(
+                f"{self._provider_name} API request failed with HTTP {error.status_code}",
                 retryable=error.status_code in {408, 409, 429}
                 or (error.status_code is not None and error.status_code >= 500),
             ) from None
         except APIConnectionError:
-            raise MeshRequestError("Mesh API connection failed", retryable=True) from None
+            raise self._provider_error(
+                f"{self._provider_name} API connection failed", retryable=True
+            ) from None
         except APIError:
-            raise MeshRequestError("Mesh API request failed") from None
+            raise self._provider_error(f"{self._provider_name} API request failed") from None
         except InstructorRetryException as error:
             provider_error = error.__cause__
             if isinstance(provider_error, APIStatusError):
-                raise MeshRequestError(
-                    f"Mesh API request failed with HTTP {provider_error.status_code}",
+                raise self._provider_error(
+                    f"{self._provider_name} API request failed with HTTP {provider_error.status_code}",
                     retryable=provider_error.status_code in {408, 409, 429}
                     or (
                         provider_error.status_code is not None and provider_error.status_code >= 500
                     ),
                 ) from None
             if isinstance(provider_error, APIConnectionError):
-                raise MeshRequestError("Mesh API connection failed", retryable=True) from None
+                raise self._provider_error(
+                    f"{self._provider_name} API connection failed", retryable=True
+                ) from None
             if isinstance(provider_error, APIError):
-                raise MeshRequestError("Mesh API request failed") from None
-            raise MeshStructuredOutputError(
+                raise self._provider_error(f"{self._provider_name} API request failed") from None
+            raise LLMStructuredOutputError(
                 "structured output remained invalid after correction limit"
             ) from None
 
     def close(self) -> None:
         self._client.close()
         self._instructor_logger.removeFilter(self._secret_filter)
+
+
+MeshClient = LLMClient
+MeshRequestError = LLMProviderRequestError
+MissingMeshApiKey = MissingProviderApiKey
+MeshStructuredOutputError = LLMStructuredOutputError

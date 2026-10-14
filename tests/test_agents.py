@@ -39,6 +39,9 @@ class FakeMeshClient:
         self.contents = list(contents)
         self.requests = []
 
+    def resolve_model(self, configured_model):
+        return configured_model
+
     def complete_structured(self, request, response_model, max_retries):
         self.requests.append(request)
         return response_model.model_validate_json(self.contents.pop(0))
@@ -81,7 +84,7 @@ def make_agent_test_context(tmp_path: Path):
         configs[agent_id] = PlatformAgentConfig(
             platform="linkedin",
             agent_id=agent_id,
-            model="openai/omni-moderation-latest",
+            model="openai/gpt-oss-120b",
             system_prompt_id=f"linkedin.{agent_id}.system",
             instruction_prompt_id=f"linkedin.{agent_id}.instructions",
         )

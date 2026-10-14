@@ -32,15 +32,20 @@ class Settings(BaseSettings):
     )
 
     app_env: Literal["local", "test", "production"] = "local"
+    llm_provider: Literal["mesh", "groq"] = "mesh"
     mesh_api_key: SecretStr | None = None
     mesh_base_url: Literal["https://api.meshapi.ai/v1"] = MESH_BASE_URL
-    default_model: str = "openai/omni-moderation-latest"
+    groq_api_key: SecretStr | None = None
+    groq_model: str | None = None
+    default_model: str = "openai/gpt-oss-120b"
     database_url: str = "sqlite:///./creatoros.db"
     request_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
     default_max_attempts: int = Field(default=3, ge=1, le=10)
 
     @model_validator(mode="after")
     def require_mesh_key_in_production(self):
+        if self.llm_provider == "groq" and self.app_env not in {"local", "test"}:
+            raise ValueError("Groq provider is available only in local or test environments")
         if self.app_env == "production" and self.mesh_api_key is None:
             raise ValueError("MESH_API_KEY is required in production")
         return self

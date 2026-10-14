@@ -40,7 +40,7 @@ class FakeMeshClient:
 def test_mesh_deepeval_model_routes_sync_and_async_calls_through_mesh():
     model_type = load_mesh_model()
     mesh_client = FakeMeshClient()
-    model = model_type(mesh_client, model_name="openai/omni-moderation-latest")
+    model = model_type(mesh_client, model_name="openai/gpt-oss-120b")
 
     sync_result = model.generate("Score this draft.", schema={"type": "object"})
     async_result = asyncio.run(model.a_generate("Score this revision."))
@@ -48,7 +48,7 @@ def test_mesh_deepeval_model_routes_sync_and_async_calls_through_mesh():
     assert sync_result == "judge response"
     assert async_result == "judge response"
     assert len(mesh_client.requests) == 2
-    assert mesh_client.requests[0].model == "openai/omni-moderation-latest"
+    assert mesh_client.requests[0].model == "openai/gpt-oss-120b"
     assert mesh_client.requests[0].messages[0].role == "user"
     assert mesh_client.requests[0].response_format == {"type": "json_object"}
     assert "api.meshapi.ai" not in mesh_client.requests[0].model
@@ -138,7 +138,7 @@ def test_real_geval_metrics_use_mesh_adapter_without_network():
             )
 
     mesh_client = StructuredJudgeMeshClient()
-    model = MeshDeepEvalModel(mesh_client, model_name="openai/omni-moderation-latest")
+    model = MeshDeepEvalModel(mesh_client, model_name="openai/gpt-oss-120b")
     case = case_type(
         case_id="actual-geval-mock-transport",
         brief="A technical post about measurable AI safety.",
@@ -160,13 +160,12 @@ def test_real_geval_metrics_use_mesh_adapter_without_network():
     assert len(results) == 1
     assert set(results[0].variants) == set(case.drafts)
     assert mesh_client.calls
-    assert all(call.model == "openai/omni-moderation-latest" for call in mesh_client.calls)
+    assert all(call.model == "openai/gpt-oss-120b" for call in mesh_client.calls)
     assert all("user" in [message.role for message in call.messages] for call in mesh_client.calls)
 
 
 def test_cli_without_mesh_key_writes_no_results(tmp_path: Path, monkeypatch):
-    from types import SimpleNamespace
-
+    from app.config import Settings
     from eval.benchmark import main
 
     input_path = tmp_path / "cases.json"
@@ -174,7 +173,100 @@ def test_cli_without_mesh_key_writes_no_results(tmp_path: Path, monkeypatch):
     input_path.write_text("[]", encoding="utf-8")
     monkeypatch.setattr(
         "app.config.Settings",
-        lambda: SimpleNamespace(mesh_api_key=None),
+            lambda: Settings(
+                llm_provider="mesh",
+                mesh_api_key=None,
+                _env_file=None,
+            ),
+    )
+
+    with pytest.raises(SystemExit):
+        main(["--input", str(input_path), "--output", str(output_path)])
+
+    assert not output_path.exists()
+
+
+def _run_benchmark_cli(tmp_path, monkeypatch, settings, extra_args=()):
+    from eval import benchmark
+
+    input_path = tmp_path / "cases.json"
+    output_path = tmp_path / "results.json"
+    input_path.write_text("[]", encoding="utf-8")
+    observed = {}
+    monkeypatch.setattr("app.config.Settings", lambda: settings)
+    monkeypatch.setattr(
+        benchmark,
+        "run_benchmarks",
+        lambda cases, model: observed.update(model=model) or [],
+    )
+    monkeypatch.setattr(benchmark, "write_results", lambda results, path: None)
+
+    benchmark.main(["--input", str(input_path), "--output", str(output_path), *extra_args])
+
+    return observed["model"]
+
+
+def test_benchmark_cli_uses_groq_model_by_default(tmp_path: Path, monkeypatch):
+    from pydantic import SecretStr
+
+    from app.config import Settings
+
+    settings = Settings(
+        llm_provider="groq",
+        mesh_api_key=SecretStr("unused-mesh-key"),
+        groq_api_key=SecretStr("test-groq-key"),
+        groq_model="test-groq-model",
+        _env_file=None,
+    )
+
+    model = _run_benchmark_cli(tmp_path, monkeypatch, settings)
+
+    assert model._model_name == "test-groq-model"
+
+
+def test_benchmark_cli_allows_an_explicit_model_override(tmp_path: Path, monkeypatch):
+    from pydantic import SecretStr
+
+    from app.config import Settings
+
+    settings = Settings(
+        llm_provider="groq",
+        mesh_api_key=SecretStr("unused-mesh-key"),
+        groq_api_key=SecretStr("test-groq-key"),
+        groq_model="test-groq-model",
+        _env_file=None,
+    )
+
+    model = _run_benchmark_cli(
+        tmp_path,
+        monkeypatch,
+        settings,
+        ["--model", "explicit-groq-model"],
+    )
+
+    assert model._model_name == "explicit-groq-model"
+
+
+def test_benchmark_cli_rejects_missing_selected_provider_key(tmp_path: Path, monkeypatch):
+    from pydantic import SecretStr
+
+    from app.config import Settings
+    from eval.benchmark import main
+
+    input_path = tmp_path / "cases.json"
+    output_path = tmp_path / "results.json"
+    input_path.write_text("[]", encoding="utf-8")
+    settings = Settings(
+        llm_provider="groq",
+        mesh_api_key=SecretStr("unused-mesh-key"),
+        groq_api_key=None,
+        groq_model="test-groq-model",
+        _env_file=None,
+    )
+    monkeypatch.setattr("app.config.Settings", lambda: settings)
+    monkeypatch.setattr(
+        "eval.benchmark.run_benchmarks",
+        lambda *_args, **_kwargs: pytest.fail("benchmark must not run without Groq credentials"),
     )
 
     with pytest.raises(SystemExit):

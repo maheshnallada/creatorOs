@@ -34,6 +34,44 @@ def test_local_settings_allow_missing_mesh_key(monkeypatch):
     assert settings.mesh_api_key is None
 
 
+def test_settings_default_to_mesh_provider(monkeypatch):
+    _, _, settings_type = load_config_types()
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_MODEL", raising=False)
+
+    settings = settings_type(_env_file=None)
+
+    assert settings.llm_provider == "mesh"
+    assert settings.groq_api_key is None
+    assert settings.groq_model is None
+
+
+def test_settings_can_select_groq_for_local_development(monkeypatch):
+    _, _, settings_type = load_config_types()
+    monkeypatch.setenv("LLM_PROVIDER", "groq")
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    monkeypatch.setenv("GROQ_MODEL", "test-groq-model")
+
+    settings = settings_type(_env_file=None)
+
+    assert settings.llm_provider == "groq"
+    assert settings.groq_api_key.get_secret_value() == "test-groq-key"
+    assert settings.groq_model == "test-groq-model"
+
+
+def test_production_settings_reject_groq_provider():
+    _, _, settings_type = load_config_types()
+
+    with pytest.raises(ValidationError, match="Groq.*local or test"):
+        settings_type(
+            app_env="production",
+            llm_provider="groq",
+            mesh_api_key="mesh-test-key",
+            _env_file=None,
+        )
+
+
 def test_settings_default_to_local_sqlite_database():
     settings_type = load_config_types()[2]
 
@@ -45,7 +83,12 @@ def test_settings_default_to_local_sqlite_database():
 def test_production_settings_require_mesh_key():
     _, _, settings_type = load_config_types()
     with pytest.raises(ValidationError, match="MESH_API_KEY"):
-        settings_type(app_env="production", mesh_api_key=None, _env_file=None)
+        settings_type(
+            app_env="production",
+            llm_provider="mesh",
+            mesh_api_key=None,
+            _env_file=None,
+        )
 
 
 def test_platform_agent_config_accepts_allowlisted_tools():
@@ -53,7 +96,7 @@ def test_platform_agent_config_accepts_allowlisted_tools():
     config = config_type(
         platform="linkedin",
         agent_id="writer",
-        model="openai/omni-moderation-latest",
+        model="openai/gpt-oss-120b",
         system_prompt_id="linkedin.writer.system",
         instruction_prompt_id="linkedin.writer.instructions",
         mcp_tool_ids=["get_brand_voice_profile"],
@@ -71,7 +114,7 @@ def test_platform_agent_config_has_bounded_output_and_editor_budgets():
     config = config_type(
         platform="linkedin",
         agent_id="writer",
-        model="openai/omni-moderation-latest",
+        model="openai/gpt-oss-120b",
         system_prompt_id="linkedin.writer.system",
         instruction_prompt_id="linkedin.writer.instructions",
     )
@@ -94,7 +137,7 @@ def test_platform_agent_config_rejects_unbounded_loop_settings(override):
     values = {
         "platform": "linkedin",
         "agent_id": "writer",
-        "model": "openai/omni-moderation-latest",
+        "model": "openai/gpt-oss-120b",
         "system_prompt_id": "linkedin.writer.system",
         "instruction_prompt_id": "linkedin.writer.instructions",
     }
@@ -110,7 +153,7 @@ def test_platform_agent_config_rejects_unknown_tool_ids():
         config_type(
             platform="linkedin",
             agent_id="writer",
-            model="openai/omni-moderation-latest",
+            model="openai/gpt-oss-120b",
             system_prompt_id="linkedin.writer.system",
             instruction_prompt_id="linkedin.writer.instructions",
             mcp_tool_ids=["unknown_tool"],
@@ -173,7 +216,7 @@ def test_platform_agent_config_rejects_nonpositive_limits(overrides):
     values = {
         "platform": "linkedin",
         "agent_id": "writer",
-        "model": "openai/omni-moderation-latest",
+        "model": "openai/gpt-oss-120b",
         "system_prompt_id": "linkedin.writer.system",
         "instruction_prompt_id": "linkedin.writer.instructions",
     }

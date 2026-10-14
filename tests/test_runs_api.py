@@ -183,6 +183,9 @@ def test_api_runs_real_workflow_with_fake_mesh_and_temporary_sqlite(tmp_path):
             self.requests = []
             self.retry_budgets = []
 
+        def resolve_model(self, configured_model):
+            return configured_model
+
         def complete_structured(self, request, response_model, max_retries):
             self.requests.append(request)
             self.retry_budgets.append(max_retries)
@@ -211,7 +214,12 @@ def test_api_runs_real_workflow_with_fake_mesh_and_temporary_sqlite(tmp_path):
     graph = build_content_graph(agents, repository, configs["editor"])
     service = CreationService(graph, repository)
     app = load_create_app()(
-        Settings(app_env="test", database_url=database_url, _env_file=None),
+        Settings(
+            app_env="test",
+            llm_provider="mesh",
+            database_url=database_url,
+            _env_file=None,
+        ),
         creation_service=service,
         run_repository=repository,
         database=database,

@@ -1,7 +1,7 @@
 {
   "platform": "linkedin",
   "agent_id": "strategist",
-  "model": "openai/omni-moderation-latest",
+  "model": "openai/gpt-oss-120b",
   "max_tokens": 768,
   "timeout_seconds": 30,
   "max_attempts": 3,

@@ -2,7 +2,7 @@ from uuid import uuid4
 
 from app.agents.contracts import ContentBrief
 from app.agents.runtime import StructuredOutputError
-from app.llm.mesh_client import MeshRequestError
+from app.llm.mesh_client import LLMProviderRequestError
 from app.repositories.runs import RunRepository
 from app.workflows.state import ContentState
 
@@ -41,8 +41,10 @@ class CreationService:
         return self._repository.get(run_id)
 
     def _persist_failure(self, run_id: str, error: Exception) -> None:
-        if isinstance(error, MeshRequestError):
-            failure_code = "mesh_request_failed"
+        if isinstance(error, LLMProviderRequestError):
+            failure_code = (
+                "groq_request_failed" if error.provider == "groq" else "mesh_request_failed"
+            )
         elif isinstance(error, StructuredOutputError):
             failure_code = "invalid_structured_output"
         else:

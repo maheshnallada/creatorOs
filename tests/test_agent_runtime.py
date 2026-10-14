@@ -21,6 +21,10 @@ class FakeMeshClient:
         self.contents = list(contents)
         self.requests = []
         self.retry_limits = []
+        self.model_override = None
+
+    def resolve_model(self, configured_model):
+        return self.model_override or configured_model
 
     def complete_structured(self, request, response_model, max_retries):
         self.requests.append(request)
@@ -54,7 +58,7 @@ def build_runtime(
     config = PlatformAgentConfig(
         platform="linkedin",
         agent_id="writer",
-        model="openai/omni-moderation-latest",
+        model="openai/gpt-oss-120b",
         timeout_seconds=timeout_seconds,
         max_tokens=max_tokens,
         max_output_corrections=max_output_corrections,
@@ -73,8 +77,18 @@ def test_runtime_parses_valid_json_through_mesh_response_format(tmp_path: Path):
 
     assert output == CaptionOutput(caption="A useful post")
     assert mesh_client.retry_limits == [1]
+    assert mesh_client.requests[0].model == "openai/gpt-oss-120b"
     assert mesh_client.requests[0].messages[0].role == "system"
     assert mesh_client.requests[0].messages[1].role == "user"
+
+
+def test_runtime_uses_groq_model_override(tmp_path: Path):
+    runtime, config, mesh_client = build_runtime(tmp_path, ['{"caption":"A useful post"}'])
+    mesh_client.model_override = "llama-test-model"
+
+    runtime.generate_json(config, {}, {"topic": "AI safety"}, CaptionOutput)
+
+    assert mesh_client.requests[0].model == "llama-test-model"
 
 
 def test_runtime_applies_agent_timeout_and_token_budget(tmp_path: Path):

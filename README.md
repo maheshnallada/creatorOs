@@ -4,11 +4,11 @@ CreatorOS is a multi-agent content studio being built for the Agent Arena hackat
 
 ## Current implementation
 
-Four distinct LangGraph nodes use their own prompts and Pydantic output contracts: safety, strategist, writer, and editor. Instructor runs in JSON mode through the Mesh-backed OpenAI client and applies the per-agent validation retry budget; transient transport retries remain separate. Structured-call failures and Instructor retry logs are sanitized. The editor-to-writer loop is bounded; the API returns a run in `needs_review` even if it reaches the revision limit without passing the editor threshold. A separate Reflection Agent updates the versioned content playbook from labeled feedback. CreatorOS does not publish content.
+Four distinct LangGraph nodes use their own prompts and Pydantic output contracts: safety, strategist, writer, and editor. Instructor runs in JSON mode through a provider-configurable OpenAI-compatible client and applies the per-agent validation retry budget; transient transport retries remain separate. Structured-call failures and Instructor retry logs are sanitized. The editor-to-writer loop is bounded; the API returns a run in `needs_review` even if it reaches the revision limit without passing the editor threshold. A separate Reflection Agent updates the versioned content playbook from labeled feedback. CreatorOS does not publish content.
 
 Runs, brand samples/profiles, performance feedback, playbook versions, and append-only decision events are stored in local SQLite. The API exposes run creation/retrieval, ordered event retrieval, brand profile ingestion/retrieval, and feedback submission. Three or more distinct user-provided posts create a versioned voice profile; active profile and playbook versions are injected into subsequent runs. Feedback must be labeled `user_entered` or `simulated`; simulated values are never presented as platform-fetched. The DeepEval benchmark and recorded measurements remain in progress. LinkedIn agent settings live under `platform_configs/`; Markdown prompts live under `agent_prompts/`.
 
-Every model request must go through `https://api.meshapi.ai/v1` using `MESH_API_KEY`. The application does not fall back to a direct model-provider endpoint.
+`LLM_PROVIDER` selects `mesh` (default) or `groq`. Mesh requests use `MESH_API_KEY`; Groq requests use `GROQ_API_KEY` and `GROQ_MODEL`. Groq is restricted to local development and tests. Production and hackathon runs must use Mesh, and provider failures never silently fall back to another provider.
 
 This phase has no human approval/rejection endpoint, user authentication, platform OAuth, media generation, or social publishing. The API is intended for local development only; do not expose it to a network until authentication and authorization are implemented.
 
@@ -23,7 +23,7 @@ python -m pip install -e '.[dev]'
 cp .env.example .env
 ```
 
-Set `MESH_API_KEY` in the local `.env` file before making a live model request. Never commit `.env`, `local-secrets.json`, or `secrets.json`. Cloud deployments should inject secrets through a secret manager/environment, not a checked-in file.
+Set the API key for the selected provider in `.env` before making a live model request. To use Groq locally, set `LLM_PROVIDER=groq`, `GROQ_API_KEY`, and a valid `GROQ_MODEL`; leave `APP_ENV` as `local` or `test`. Use Mesh for production and hackathon runs. Never commit `.env`, `local-secrets.json`, or `secrets.json`. Cloud deployments should inject secrets through a secret manager/environment, not a checked-in file.
 
 ## Run
 
@@ -32,6 +32,26 @@ uvicorn app.main:app --reload
 ```
 
 The health endpoint is available at `http://127.0.0.1:8000/health`.
+
+## Run with Docker Compose
+
+Requires Docker Engine and Docker Compose. The native app and test suite continue to use SQLite; Compose runs the API with PostgreSQL 16 and stores database files in the `creatoros_pgdata` named volume.
+
+```bash
+cp .env.example .env
+```
+
+Set the selected provider's key in `.env` before making live model requests. The template defaults to Mesh. For local Groq use, set `LLM_PROVIDER=groq`, `GROQ_API_KEY`, and `GROQ_MODEL`; do not use Groq for production or hackathon runs. The example PostgreSQL credentials are for local development only. Compose does not publish the database port; it binds the unauthenticated API to `127.0.0.1` on `CREATOROS_PORT` (default `8000`). Do not expose this API to a network until authentication and authorization are implemented.
+
+```bash
+docker compose up --build -d
+docker compose ps
+curl http://127.0.0.1:${CREATOROS_PORT:-8000}/health
+docker compose exec postgres pg_isready
+docker compose logs -f app
+```
+
+Stop the containers with `docker compose down`. The named database volume remains, so data survives container restarts and normal shutdown. `docker compose down -v` deletes the database volume and should only be used for an intentional local reset.
 
 ## Create a run
 
@@ -87,7 +107,7 @@ python -m pip install -e '.[eval]'
 python -m eval.benchmark --input eval/cases/my-run-pairs.json --output eval/results/phase3.json
 ```
 
-The judge uses the Mesh-backed model adapter, and DeepEval telemetry is disabled. No benchmark scores are recorded yet; a valid `MESH_API_KEY` and actual run outputs are required. Do not treat unit-test fake scores as results.
+The judge uses the selected provider; in Groq mode it defaults to `GROQ_MODEL`, and `--model` overrides that selection. DeepEval telemetry is disabled. No benchmark scores are recorded yet; valid credentials for the selected provider and actual run outputs are required. Do not treat unit-test fake scores as results.
 
 ## Test
 
